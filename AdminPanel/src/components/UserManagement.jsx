@@ -34,8 +34,9 @@ import {
   Phone as PhoneIcon,
   Email as EmailIcon,
   LocationOn as LocationIcon,
+  Contacts as ContactsIcon,
 } from '@mui/icons-material';
-import { FirebaseService } from '../services/firebaseService';
+import { DatabaseService } from '../services/databaseService';
 
 function UserManagement() {
   const [users, setUsers] = useState([]);
@@ -53,93 +54,36 @@ function UserManagement() {
   const loadData = async () => {
     try {
       setLoading(true);
-      
-      // Get SOS events to extract user information
-      const unsubscribe = FirebaseService.subscribeToSOSEvents((events) => {
-        setSOSEvents(events);
-        
-        // Extract unique users from SOS events
-        const userMap = new Map();
-        
-        events.forEach(event => {
-          // Extract user information from the event
-          let userId, userName, userPhone;
 
-          if (event.contacts && event.contacts.length > 0) {
-            // Check if contacts is an array of objects or strings
-            const firstContact = event.contacts[0];
+      // Get real users from PostgreSQL database (already includes SOS event data)
+      const realUsers = await DatabaseService.getAllUsers();
 
-            if (typeof firstContact === 'string') {
-              // Contact is a phone number string
-              userId = firstContact;
-              userName = `User ${firstContact.slice(-4)}`; // Use last 4 digits
-              userPhone = firstContact;
-            } else if (typeof firstContact === 'object') {
-              // Contact is an object with name and phone
-              userId = firstContact.phone || firstContact.id || `user_${Date.now()}`;
-              userName = firstContact.name || `User ${(firstContact.phone || '').slice(-4)}`;
-              userPhone = firstContact.phone || 'Unknown';
-            }
-          } else {
-            // No contacts, create user from event location/address
-            const locationId = `${event.lat}_${event.lng}`.replace('.', '');
-            userId = `location_${locationId}`;
-            userName = event.address ?
-              `User at ${event.address.split(',')[0]}` :
-              `User at ${event.lat?.toFixed(4)}, ${event.lng?.toFixed(4)}`;
-            userPhone = 'Not available';
-          }
-
-          if (!userMap.has(userId)) {
-            userMap.set(userId, {
-              id: userId,
-              name: userName || 'Anonymous User',
-              phone: userPhone || 'Not available',
-              email: 'Not available',
-              lastActivity: event.timestamp,
-              sosCount: 1,
-              status: 'active',
-              location: event.address || `${event.lat}, ${event.lng}`,
-              eventTypes: [event.type]
-            });
-          } else {
-            const existingUser = userMap.get(userId);
-            existingUser.sosCount += 1;
-
-            // Add event type if not already present
-            if (!existingUser.eventTypes.includes(event.type)) {
-              existingUser.eventTypes.push(event.type);
-            }
-
-            // Update last activity if this event is more recent
-            if (new Date(event.timestamp) > new Date(existingUser.lastActivity)) {
-              existingUser.lastActivity = event.timestamp;
-              existingUser.location = event.address || `${event.lat}, ${event.lng}`;
-            }
-          }
-        });
-        
-        setUsers(Array.from(userMap.values()));
-        setLoading(false);
-      }, 200);
-
-      return () => unsubscribe();
+      // Set users directly since they already include SOS event information
+      setUsers(realUsers);
+      setLoading(false);
     } catch (error) {
       console.error('Error loading user data:', error);
       setLoading(false);
     }
   };
 
-  const handleViewUser = (user) => {
+  const handleViewUser = async (user) => {
     setSelectedUser(user);
-    
-    // Get events for this user
-    const userSOSEvents = sosEvents.filter(event => 
-      event.contacts && event.contacts.some(contact => 
-        contact.phone === user.phone || contact.name === user.name
-      )
-    );
-    setUserEvents(userSOSEvents);
+
+    // Get SOS events for this specific user from the database
+    try {
+      const response = await fetch(`http://localhost:5500/api/admin/sos-events?userId=${user.id}`);
+      if (response.ok) {
+        const userSOSEvents = await response.json();
+        setUserEvents(userSOSEvents);
+      } else {
+        setUserEvents([]);
+      }
+    } catch (error) {
+      console.error('Error fetching user SOS events:', error);
+      setUserEvents([]);
+    }
+
     setDialogOpen(true);
   };
 
@@ -243,8 +187,8 @@ function UserManagement() {
               <TableHead>
                 <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
                   <TableCell sx={{ fontWeight: 600 }}>User</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Contact & Location</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Contact Info</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Registration</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>SOS Events</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Last Activity</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Actions</TableCell>
@@ -264,7 +208,10 @@ function UserManagement() {
                     <TableRow key={user.id || index} hover>
                       <TableCell>
                         <Box display="flex" alignItems="center" gap={2}>
-                          <Avatar sx={{ bgcolor: '#DC2626' }}>
+                          <Avatar sx={{
+                            bgcolor: user.isRealUser ? '#2E7D32' : '#DC2626',
+                            border: user.isRealUser ? '2px solid #4CAF50' : '2px solid #F44336'
+                          }}>
                             <PersonIcon />
                           </Avatar>
                           <Box>
@@ -272,8 +219,16 @@ function UserManagement() {
                               {user.name}
                             </Typography>
                             <Typography variant="caption" color="textSecondary">
-                              ID: {user.id}
+                              {user.isRealUser ? `User ID: ${user.id}` : `Temp ID: ${user.id}`}
                             </Typography>
+                            {user.isRealUser && (
+                              <Chip
+                                label="Registered"
+                                color="success"
+                                size="small"
+                                sx={{ ml: 1, fontSize: '0.7rem' }}
+                              />
+                            )}
                           </Box>
                         </Box>
                       </TableCell>
@@ -281,22 +236,38 @@ function UserManagement() {
                         <Box>
                           <Box display="flex" alignItems="center" gap={1} mb={0.5}>
                             <PhoneIcon fontSize="small" color="action" />
-                            <Typography variant="body2">{user.phone}</Typography>
+                            <Typography variant="body2">{user.phone || 'No phone'}</Typography>
                           </Box>
-                          <Box display="flex" alignItems="center" gap={1}>
-                            <LocationIcon fontSize="small" color="action" />
+                          <Box display="flex" alignItems="center" gap={1} mb={0.5}>
+                            <EmailIcon fontSize="small" color="action" />
                             <Typography variant="body2" sx={{ maxWidth: 150 }}>
-                              {user.location ? user.location.split(',')[0] + '...' : 'Not available'}
+                              {user.email !== 'Not available' ? user.email : 'No email'}
                             </Typography>
                           </Box>
+                          {user.emergency_contacts_count > 0 && (
+                            <Box display="flex" alignItems="center" gap={1}>
+                              <ContactsIcon fontSize="small" color="success" />
+                              <Typography variant="caption" color="success.main">
+                                {user.emergency_contacts_count} emergency contacts
+                              </Typography>
+                            </Box>
+                          )}
                         </Box>
                       </TableCell>
                       <TableCell>
-                        <Chip
-                          label={getStatusText(user.lastActivity)}
-                          color={getStatusColor(user.lastActivity)}
-                          size="small"
-                        />
+                        <Box>
+                          <Chip
+                            label={user.isRealUser ? 'Registered User' : 'SOS Only'}
+                            color={user.isRealUser ? 'success' : 'warning'}
+                            size="small"
+                            sx={{ mb: 0.5 }}
+                          />
+                          {user.registeredAt && (
+                            <Typography variant="caption" display="block" color="textSecondary">
+                              Joined: {new Date(user.registeredAt).toLocaleDateString()}
+                            </Typography>
+                          )}
+                        </Box>
                       </TableCell>
                       <TableCell>
                         <Chip
@@ -352,13 +323,24 @@ function UserManagement() {
                       <strong>Email:</strong> {selectedUser.email}
                     </Typography>
                     <Typography variant="body2">
-                      <strong>Status:</strong> {getStatusText(selectedUser.lastActivity)}
+                      <strong>Registration Status:</strong>
+                      <Chip
+                        label={selectedUser.isRealUser ? 'Registered User' : 'SOS Only'}
+                        color={selectedUser.isRealUser ? 'success' : 'warning'}
+                        size="small"
+                        sx={{ ml: 1 }}
+                      />
                     </Typography>
+                    {selectedUser.registeredAt && (
+                      <Typography variant="body2">
+                        <strong>Registration Date:</strong> {formatTimestamp(selectedUser.registeredAt)}
+                      </Typography>
+                    )}
                     <Typography variant="body2">
                       <strong>Total SOS Events:</strong> {selectedUser.sosCount}
                     </Typography>
                     <Typography variant="body2">
-                      <strong>Event Types:</strong> {selectedUser.eventTypes?.join(', ') || 'Unknown'}
+                      <strong>Event Types:</strong> {selectedUser.eventTypes?.join(', ') || 'None'}
                     </Typography>
                     <Typography variant="body2">
                       <strong>Last Location:</strong> {selectedUser.location || 'Not available'}
@@ -366,9 +348,28 @@ function UserManagement() {
                     <Typography variant="body2">
                       <strong>Last Activity:</strong> {formatTimestamp(selectedUser.lastActivity)}
                     </Typography>
+                    {selectedUser.emergency_contacts_count > 0 && (
+                      <>
+                        <Typography variant="body2" sx={{ mt: 1 }}>
+                          <strong>Emergency Contacts:</strong> {selectedUser.emergency_contacts_count}
+                        </Typography>
+                        <Box sx={{ mt: 1 }}>
+                          {selectedUser.emergency_contacts?.map((contact, index) => (
+                            <Chip
+                              key={index}
+                              label={`${contact} (${selectedUser.emergency_phones?.[index] || 'No phone'})`}
+                              size="small"
+                              variant="outlined"
+                              color="success"
+                              sx={{ mr: 0.5, mb: 0.5 }}
+                            />
+                          ))}
+                        </Box>
+                      </>
+                    )}
                   </Box>
                 </Grid>
-                
+
                 <Grid item xs={12} md={6}>
                   <Typography variant="subtitle2" gutterBottom>
                     Recent SOS Events

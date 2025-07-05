@@ -1,220 +1,161 @@
-import { 
-  collection, 
-  onSnapshot, 
-  query, 
-  orderBy, 
-  limit, 
-  where,
-  getDocs,
-  Timestamp 
-} from 'firebase/firestore';
-import { db } from '../config/firebase.js';
+// Firebase service for RakshaNet Admin Panel
+import { db } from '../config/firebase';
+import { collection, query, orderBy, onSnapshot, limit, getDocs } from 'firebase/firestore';
 
 export class FirebaseService {
-  // Listen to real-time SOS events
+  // Subscribe to real-time SOS events from Firebase
   static subscribeToSOSEvents(callback, limitCount = 50) {
-    const sosEventsRef = collection(db, 'sosEvents');
-    const q = query(sosEventsRef, orderBy('timestamp', 'desc'), limit(limitCount));
-
-    return onSnapshot(q, (snapshot) => {
-      const events = [];
-      snapshot.forEach((doc) => {
-        events.push({
-          id: doc.id,
-          ...doc.data()
-        });
-      });
-      callback(events);
-    });
-  }
-
-  // Get ALL SOS events (no limit) for historical data
-  static subscribeToAllSOSEvents(callback) {
-    const sosEventsRef = collection(db, 'sosEvents');
-    const q = query(sosEventsRef, orderBy('timestamp', 'desc'));
-
-    return onSnapshot(q, (snapshot) => {
-      const events = [];
-      snapshot.forEach((doc) => {
-        events.push({
-          id: doc.id,
-          ...doc.data()
-        });
-      });
-      callback(events);
-    });
-  }
-
-  // Listen to real-time location updates
-  static subscribeToLocationUpdates(callback) {
-    const locationsRef = collection(db, 'liveLocations');
-
-    return onSnapshot(locationsRef, (snapshot) => {
-      const locations = [];
-      snapshot.forEach((doc) => {
-        const data = doc.data();
-        locations.push({
-          id: doc.id,
-          ...data,
-          // Ensure we have valid coordinates
-          lat: data.lat || data.latitude,
-          lng: data.lng || data.longitude
-        });
-      });
-      callback(locations);
-    });
-  }
-
-  // Check what collections exist in the database
-  static async checkAvailableCollections() {
     try {
-      const collections = ['liveLocations', 'sosEvents', 'users', 'locations', 'userLocations'];
-      const results = {};
+      const sosEventsRef = collection(db, 'sosEvents');
+      const q = query(sosEventsRef, orderBy('timestamp', 'desc'), limit(limitCount));
+      
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        const events = [];
+        snapshot.forEach((doc) => {
+          events.push({
+            id: doc.id,
+            ...doc.data()
+          });
+        });
+        callback(events);
+      }, (error) => {
+        console.error('Error listening to Firebase SOS events:', error);
+        // Fallback to empty array if Firebase fails
+        callback([]);
+      });
 
-      for (const collectionName of collections) {
-        try {
-          const collectionRef = collection(db, collectionName);
-          const snapshot = await getDocs(query(collectionRef, limit(1)));
-          results[collectionName] = {
-            exists: !snapshot.empty,
-            count: snapshot.size,
-            sampleData: snapshot.empty ? null : snapshot.docs[0].data()
-          };
-        } catch (error) {
-          results[collectionName] = {
-            exists: false,
-            error: error.message
-          };
-        }
-      }
-
-      return results;
+      return unsubscribe;
     } catch (error) {
-      console.error('Error checking collections:', error);
-      return {};
+      console.error('Error setting up Firebase SOS events listener:', error);
+      // Return a dummy unsubscribe function
+      return () => {};
     }
   }
 
-  // Get all location data from multiple possible collections
+  // Subscribe to ALL SOS events (no limit) for historical data
+  static subscribeToAllSOSEvents(callback) {
+    try {
+      const sosEventsRef = collection(db, 'sosEvents');
+      const q = query(sosEventsRef, orderBy('timestamp', 'desc'));
+      
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        const events = [];
+        snapshot.forEach((doc) => {
+          events.push({
+            id: doc.id,
+            ...doc.data()
+          });
+        });
+        callback(events);
+      }, (error) => {
+        console.error('Error listening to all Firebase SOS events:', error);
+        callback([]);
+      });
+
+      return unsubscribe;
+    } catch (error) {
+      console.error('Error setting up Firebase all SOS events listener:', error);
+      return () => {};
+    }
+  }
+
+  // Subscribe to live location updates from Firebase
+  static subscribeToLocationUpdates(callback) {
+    try {
+      const locationsRef = collection(db, 'liveLocations');
+      const q = query(locationsRef, orderBy('timestamp', 'desc'), limit(100));
+      
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        const locations = [];
+        snapshot.forEach((doc) => {
+          locations.push({
+            id: doc.id,
+            ...doc.data()
+          });
+        });
+        callback(locations);
+      }, (error) => {
+        console.error('Error listening to Firebase live locations:', error);
+        callback([]);
+      });
+
+      return unsubscribe;
+    } catch (error) {
+      console.error('Error setting up Firebase live locations listener:', error);
+      return () => {};
+    }
+  }
+
+  // Get all location data for heat map
   static async getAllLocationData() {
     try {
-      const allLocations = [];
-      const collections = ['liveLocations', 'locations', 'userLocations'];
+      const locationsRef = collection(db, 'liveLocations');
+      const snapshot = await getDocs(locationsRef);
+      
+      const locations = [];
+      snapshot.forEach((doc) => {
+        locations.push({
+          id: doc.id,
+          ...doc.data()
+        });
+      });
 
-      for (const collectionName of collections) {
-        try {
-          const collectionRef = collection(db, collectionName);
-          const snapshot = await getDocs(collectionRef);
-
-          snapshot.forEach((doc) => {
-            const data = doc.data();
-            if ((data.lat || data.latitude) && (data.lng || data.longitude)) {
-              allLocations.push({
-                id: doc.id,
-                collection: collectionName,
-                ...data,
-                lat: data.lat || data.latitude,
-                lng: data.lng || data.longitude
-              });
-            }
-          });
-        } catch (error) {
-          console.log(`Collection ${collectionName} not accessible:`, error.message);
-        }
-      }
-
-      return allLocations;
+      return locations;
     } catch (error) {
-      console.error('Error getting location data:', error);
+      console.error('Error fetching all Firebase location data:', error);
       return [];
     }
   }
 
-  // Get SOS events for a specific time range
-  static async getSOSEventsByTimeRange(startDate, endDate) {
-    const sosEventsRef = collection(db, 'sosEvents');
-    const q = query(
-      sosEventsRef,
-      where('timestamp', '>=', startDate),
-      where('timestamp', '<=', endDate),
-      orderBy('timestamp', 'desc')
-    );
-    
-    const snapshot = await getDocs(q);
-    const events = [];
-    snapshot.forEach((doc) => {
-      events.push({
-        id: doc.id,
-        ...doc.data()
-      });
-    });
-    
-    return events;
-  }
-
-  // Get recent active users (based on recent SOS events or location updates)
-  static async getActiveUsers(hoursBack = 24) {
-    const cutoffTime = new Date();
-    cutoffTime.setHours(cutoffTime.getHours() - hoursBack);
-    
-    const sosEventsRef = collection(db, 'sosEvents');
-    const q = query(
-      sosEventsRef,
-      where('timestamp', '>=', cutoffTime.toISOString()),
-      orderBy('timestamp', 'desc')
-    );
-    
-    const snapshot = await getDocs(q);
-    const users = new Set();
-    
-    snapshot.forEach((doc) => {
-      const data = doc.data();
-      if (data.userId) {
-        users.add(data.userId);
-      }
-    });
-    
-    return Array.from(users);
-  }
-
-  // Get statistics for dashboard
+  // Get dashboard statistics from Firebase
   static async getDashboardStats() {
     try {
+      const sosEventsRef = collection(db, 'sosEvents');
+      const snapshot = await getDocs(sosEventsRef);
+      
+      const events = [];
+      snapshot.forEach((doc) => {
+        events.push({
+          id: doc.id,
+          ...doc.data()
+        });
+      });
+
+      // Calculate stats
       const now = new Date();
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       const thisWeek = new Date(today.getTime() - (7 * 24 * 60 * 60 * 1000));
       const thisMonth = new Date(today.getFullYear(), today.getMonth(), 1);
 
-      // Get today's SOS events
-      const todayEvents = await this.getSOSEventsByTimeRange(
-        today.toISOString(),
-        now.toISOString()
+      const todayEvents = events.filter(event => 
+        new Date(event.timestamp) >= today
       );
 
-      // Get this week's SOS events
-      const weekEvents = await this.getSOSEventsByTimeRange(
-        thisWeek.toISOString(),
-        now.toISOString()
+      const weekEvents = events.filter(event => 
+        new Date(event.timestamp) >= thisWeek
       );
 
-      // Get this month's SOS events
-      const monthEvents = await this.getSOSEventsByTimeRange(
-        thisMonth.toISOString(),
-        now.toISOString()
+      const monthEvents = events.filter(event => 
+        new Date(event.timestamp) >= thisMonth
       );
 
-      // Get active users
-      const activeUsers = await this.getActiveUsers(24);
+      // Get unique users from recent events
+      const recentUserIds = new Set();
+      events.forEach(event => {
+        if (new Date(event.timestamp) >= new Date(now.getTime() - (24 * 60 * 60 * 1000))) {
+          recentUserIds.add(event.userId);
+        }
+      });
 
       return {
         todaySOSCount: todayEvents.length,
         weekSOSCount: weekEvents.length,
         monthSOSCount: monthEvents.length,
-        activeUsersCount: activeUsers.length,
-        recentEvents: todayEvents.slice(0, 10) // Last 10 events
+        activeUsersCount: recentUserIds.size,
+        recentEvents: events.slice(0, 10) // Most recent 10 events
       };
     } catch (error) {
-      console.error('Error getting dashboard stats:', error);
+      console.error('Error fetching Firebase dashboard stats:', error);
       return {
         todaySOSCount: 0,
         weekSOSCount: 0,

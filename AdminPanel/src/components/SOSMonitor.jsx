@@ -33,8 +33,11 @@ import {
   Message as MessageIcon,
   LocationOn as LocationIcon,
   Refresh as RefreshIcon,
+  Mic as MicIcon,
+  DirectionsRun as DirectionsRunIcon,
+  TouchApp as TouchAppIcon,
 } from '@mui/icons-material';
-import { FirebaseService } from '../services/firebaseService';
+import { DatabaseService } from '../services/databaseService';
 
 function SOSMonitor() {
   const [sosEvents, setSOSEvents] = useState([]);
@@ -46,22 +49,25 @@ function SOSMonitor() {
 
   useEffect(() => {
     // Subscribe to real-time SOS events
-    const unsubscribe = FirebaseService.subscribeToSOSEvents((events) => {
-      const previousCount = sosEvents.length;
-      setSOSEvents(events);
-      
-      // Count new events
-      if (previousCount > 0 && events.length > previousCount) {
-        setNewEventsCount(events.length - previousCount);
-        // Reset count after 5 seconds
-        setTimeout(() => setNewEventsCount(0), 5000);
+    const unsubscribe = DatabaseService.subscribeToSOSEvents((events) => {
+      // Only update if events actually changed
+      if (JSON.stringify(events) !== JSON.stringify(sosEvents)) {
+        const previousCount = sosEvents.length;
+        setSOSEvents(events);
+
+        // Count new events
+        if (previousCount > 0 && events.length > previousCount) {
+          setNewEventsCount(events.length - previousCount);
+          // Reset count after 5 seconds
+          setTimeout(() => setNewEventsCount(0), 5000);
+        }
+
+        setLoading(false);
       }
-      
-      setLoading(false);
     }, 100);
 
     return () => unsubscribe();
-  }, [sosEvents.length]);
+  }, []); // Remove dependency to prevent unnecessary re-subscriptions
 
   const handleViewDetails = (event) => {
     setSelectedEvent(event);
@@ -87,6 +93,12 @@ function SOSMonitor() {
 
   const getEventTypeIcon = (type) => {
     switch (type?.toLowerCase()) {
+      case 'voice':
+        return <MicIcon fontSize="small" />;
+      case 'motion':
+        return <DirectionsRunIcon fontSize="small" />;
+      case 'button':
+        return <TouchAppIcon fontSize="small" />;
       case 'sms':
         return <MessageIcon fontSize="small" />;
       case 'call':
@@ -98,6 +110,12 @@ function SOSMonitor() {
 
   const getEventTypeColor = (type) => {
     switch (type?.toLowerCase()) {
+      case 'voice':
+        return 'error'; // Red for voice SOS
+      case 'motion':
+        return 'warning'; // Orange for motion SOS
+      case 'button':
+        return 'info'; // Blue for button SOS
       case 'sms':
         return 'primary';
       case 'call':
@@ -167,6 +185,9 @@ function SOSMonitor() {
                   onChange={(e) => setFilter(e.target.value)}
                 >
                   <MenuItem value="all">All Events</MenuItem>
+                  <MenuItem value="voice">Voice SOS</MenuItem>
+                  <MenuItem value="motion">Motion SOS</MenuItem>
+                  <MenuItem value="button">Button SOS</MenuItem>
                   <MenuItem value="sms">SMS Events</MenuItem>
                   <MenuItem value="call">Call Events</MenuItem>
                 </Select>
@@ -178,15 +199,20 @@ function SOSMonitor() {
                 <Typography variant="body2" color="textSecondary">
                   Total Events: {filteredEvents.length}
                 </Typography>
-                <Chip 
-                  label={`SMS: ${sosEvents.filter(e => e.type?.toLowerCase() === 'sms').length}`}
-                  color="primary" 
-                  size="small" 
+                <Chip
+                  label={`Voice: ${sosEvents.filter(e => e.type?.toLowerCase() === 'voice').length}`}
+                  color="error"
+                  size="small"
                 />
-                <Chip 
-                  label={`Calls: ${sosEvents.filter(e => e.type?.toLowerCase() === 'call').length}`}
-                  color="secondary" 
-                  size="small" 
+                <Chip
+                  label={`Motion: ${sosEvents.filter(e => e.type?.toLowerCase() === 'motion').length}`}
+                  color="warning"
+                  size="small"
+                />
+                <Chip
+                  label={`Button: ${sosEvents.filter(e => e.type?.toLowerCase() === 'button').length}`}
+                  color="info"
+                  size="small"
                 />
               </Box>
             </Grid>

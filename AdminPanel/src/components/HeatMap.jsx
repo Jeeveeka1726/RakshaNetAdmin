@@ -20,7 +20,7 @@ import {
   LocationOn as LocationIcon
 } from '@mui/icons-material';
 import { APIProvider, Map, AdvancedMarker, InfoWindow, useMap, useMapsLibrary } from '@vis.gl/react-google-maps';
-import { FirebaseService } from '../services/firebaseService';
+import { DatabaseService } from '../services/databaseService';
 import GoogleHeatMapLayer from './GoogleHeatMapLayer';
 import MapController from './MapController';
 import { majorCities, tamilNaduBounds } from '../data/tamilNaduDistricts';
@@ -56,33 +56,29 @@ function HeatMap() {
 
     const unsubscribers = [];
 
-    // Subscribe to live locations if enabled
+    // Load live locations from Firebase
     if (showLiveLocations) {
-      const locationUnsubscribe = FirebaseService.subscribeToLocationUpdates((newLocations) => {
-        setLocations(newLocations);
-
-        // Update map center to first location if available
-        if (newLocations.length > 0 && newLocations[0].lat && newLocations[0].lng) {
-          setMapCenter({
-            lat: newLocations[0].lat,
-            lng: newLocations[0].lng
-          });
-        }
-
-        setLoading(false);
-      });
-      unsubscribers.push(locationUnsubscribe);
+      DatabaseService.getLiveLocationData()
+        .then(liveLocations => {
+          console.log('📍 Loaded live locations:', liveLocations.length);
+          setLocations(liveLocations);
+          setAllLocationData(liveLocations);
+        })
+        .catch(error => {
+          console.error('Error loading live locations:', error);
+          setLocations([]);
+        });
     }
 
     // Subscribe to SOS events if enabled
     if (showSOSEvents) {
       // Use different service method based on time filter
       const sosUnsubscribe = timeFilter === 'all'
-        ? FirebaseService.subscribeToAllSOSEvents((events) => {
+        ? DatabaseService.subscribeToAllSOSEvents((events) => {
             setSOSEvents(events);
             setLoading(false);
           })
-        : FirebaseService.subscribeToSOSEvents((events) => {
+        : DatabaseService.subscribeToSOSEvents((events) => {
             // Filter events based on time filter
             const filteredEvents = filterEventsByTime(events, timeFilter);
             setSOSEvents(filteredEvents);
@@ -190,17 +186,20 @@ function HeatMap() {
     try {
       setLoading(true);
 
-      // Get all location data
-      const locationData = await FirebaseService.getAllLocationData();
-      setAllLocationData(locationData);
+      // Load live location data from Firebase
+      const liveLocationData = await DatabaseService.getLiveLocationData();
+      console.log('📍 Initial live locations loaded:', liveLocationData.length);
+
+      setAllLocationData(liveLocationData);
+      setLocations(liveLocationData);
 
       // Generate heat map data
-      const heatData = generateHeatMapData([...locationData, ...sosEvents]);
+      const heatData = generateHeatMapData([...liveLocationData, ...sosEvents]);
       setHeatMapData(heatData);
 
       // Keep Tamil Nadu center, but adjust if data is outside Tamil Nadu bounds
-      if (locationData.length > 0) {
-        const firstLocation = locationData[0];
+      if (liveLocationData.length > 0) {
+        const firstLocation = liveLocationData[0];
         // Only update center if data is outside Tamil Nadu bounds
         if (firstLocation.lat < 8 || firstLocation.lat > 13.5 ||
             firstLocation.lng < 76.5 || firstLocation.lng > 80.5) {

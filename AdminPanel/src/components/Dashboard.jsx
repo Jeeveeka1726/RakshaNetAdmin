@@ -20,19 +20,20 @@ import {
   AccessTime as AccessTimeIcon,
 } from '@mui/icons-material';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { FirebaseService } from '../services/firebaseService';
+import { DatabaseService } from '../services/databaseService';
 
 function Dashboard() {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [recentEvents, setRecentEvents] = useState([]);
+  const [sqlStats, setSqlStats] = useState(null);
 
   useEffect(() => {
     loadDashboardData();
-    
+
     // Set up real-time listener for recent events
-    const unsubscribe = FirebaseService.subscribeToSOSEvents((events) => {
+    const unsubscribe = DatabaseService.subscribeToSOSEvents((events) => {
       setRecentEvents(events.slice(0, 5)); // Show only 5 most recent
     }, 10);
 
@@ -42,7 +43,7 @@ function Dashboard() {
   const loadDashboardData = async () => {
     try {
       setLoading(true);
-      const dashboardStats = await FirebaseService.getDashboardStats();
+      const dashboardStats = await DatabaseService.getDashboardStats();
       setStats(dashboardStats);
       setError(null);
     } catch (err) {
@@ -52,6 +53,8 @@ function Dashboard() {
       setLoading(false);
     }
   };
+
+
 
   const formatTime = (timestamp) => {
     try {
@@ -169,6 +172,88 @@ function Dashboard() {
           </Card>
         </Grid>
       </Grid>
+
+      {/* SQL Database Stats */}
+      {sqlStats && (
+        <>
+          <Typography variant="h5" gutterBottom sx={{ mt: 4, mb: 2, fontWeight: 600 }}>
+            User Registration Statistics
+          </Typography>
+          <Grid container spacing={3} sx={{ mb: 4 }}>
+            <Grid item xs={12} sm={6} md={3}>
+              <Card>
+                <CardContent>
+                  <Box display="flex" alignItems="center" justifyContent="space-between">
+                    <Box>
+                      <Typography color="textSecondary" gutterBottom variant="body2">
+                        Total Registered Users
+                      </Typography>
+                      <Typography variant="h4" sx={{ fontWeight: 600, color: '#2E7D32' }}>
+                        {sqlStats.totalUsers}
+                      </Typography>
+                    </Box>
+                    <PeopleIcon sx={{ fontSize: 40, color: '#2E7D32', opacity: 0.7 }} />
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+
+            <Grid item xs={12} sm={6} md={3}>
+              <Card>
+                <CardContent>
+                  <Box display="flex" alignItems="center" justifyContent="space-between">
+                    <Box>
+                      <Typography color="textSecondary" gutterBottom variant="body2">
+                        Users with Emergency Contacts
+                      </Typography>
+                      <Typography variant="h4" sx={{ fontWeight: 600, color: '#1976d2' }}>
+                        {sqlStats.usersWithContacts}
+                      </Typography>
+                    </Box>
+                    <PeopleIcon sx={{ fontSize: 40, color: '#1976d2', opacity: 0.7 }} />
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+
+            <Grid item xs={12} sm={6} md={3}>
+              <Card>
+                <CardContent>
+                  <Box display="flex" alignItems="center" justifyContent="space-between">
+                    <Box>
+                      <Typography color="textSecondary" gutterBottom variant="body2">
+                        Total Emergency Contacts
+                      </Typography>
+                      <Typography variant="h4" sx={{ fontWeight: 600, color: '#ed6c02' }}>
+                        {sqlStats.totalContacts}
+                      </Typography>
+                    </Box>
+                    <PeopleIcon sx={{ fontSize: 40, color: '#ed6c02', opacity: 0.7 }} />
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+
+            <Grid item xs={12} sm={6} md={3}>
+              <Card>
+                <CardContent>
+                  <Box display="flex" alignItems="center" justifyContent="space-between">
+                    <Box>
+                      <Typography color="textSecondary" gutterBottom variant="body2">
+                        Setup Completion Rate
+                      </Typography>
+                      <Typography variant="h4" sx={{ fontWeight: 600, color: '#9c27b0' }}>
+                        {sqlStats.setupCompletionRate}%
+                      </Typography>
+                    </Box>
+                    <TrendingUpIcon sx={{ fontSize: 40, color: '#9c27b0', opacity: 0.7 }} />
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+          </Grid>
+        </>
+      )}
 
       {/* Recent Events */}
       <Grid container spacing={3}>

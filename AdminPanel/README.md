@@ -1,6 +1,18 @@
-# RakshaNet Admin Panel
+# RakshaNet Admin Panel (External)
 
-A comprehensive police monitoring dashboard for the RakshaNet emergency response system. This admin panel provides real-time monitoring capabilities for law enforcement to track SOS events, user locations, and emergency activities.
+A standalone admin panel for monitoring RakshaNet emergency events and user management. This external admin panel connects to the main RakshaNet backend API and provides real-time monitoring capabilities for law enforcement to track SOS events and user activities.
+
+## 🏗️ Architecture
+
+This admin panel runs as a **separate application** outside the main RakshaNet app:
+
+```
+RakshaNetAdmin/AdminPanel (Port 3002)
+    ↓ (connects via API)
+RakshaNetApp/back-end (Port 5500)
+    ↓ (reads from)
+PostgreSQL Database + Firebase
+```
 
 ## Features
 
@@ -41,20 +53,28 @@ A comprehensive police monitoring dashboard for the RakshaNet emergency response
 ## Prerequisites
 
 - Node.js 16+ and npm
-- Google Maps API key
-- Firebase project with Firestore enabled
+- RakshaNet backend running on `http://localhost:5500`
+- Google Maps API key (already configured)
 
 ## Installation
 
 1. **Navigate to the AdminPanel directory:**
    ```bash
-   cd AdminPanel
+   cd RakshaNetAdmin/AdminPanel
    ```
 
 2. **Install dependencies:**
    ```bash
    npm install
    ```
+
+3. **Start the admin panel:**
+   ```bash
+   npm run dev
+   ```
+
+4. **Access the admin panel:**
+   Open `http://localhost:3002` in your browser
 
 3. **Configure Google Maps API:**
    - Update the `GOOGLE_MAPS_API_KEY` in `src/components/HeatMap.jsx`
